@@ -1,0 +1,3 @@
+numpy == ?
+re == ? (moze nie bedzie potrzebne)
+torch
