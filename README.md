@@ -81,6 +81,9 @@ Actually for each positive pair $(w,c)$ we sample k negative pairs $(w,c_1), ...
 What I actually did is that for each pair we compute loss and mean it over number positive pairs in batch.
 
 ## Important remarks
+I have used torch only for tensorboard.
+
+### CBOW
 Note that if $N$ (indices set of relative locations of nearby words) is small, and dictionary size 
 $D$ is huge, then majority of entries in input (histogram of words in the neighbourhood) are zeros.
 Naive computation has complexity of O(Dd) time. Note that forward pass could omit some computation 
