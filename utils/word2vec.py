@@ -305,6 +305,8 @@ class SkipGram():
     
     def train_step(self, w, c, lr):
         """
+        Updates models weights according to loss for given positive samples and sampled negative samples.
+        Negative samples are sampled according to unigram distribution raised to power 3/4.
         Argument:
         w - index of word; type: ndarray
         c - index of word; type: ndarray
