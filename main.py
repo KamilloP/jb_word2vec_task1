@@ -14,11 +14,6 @@ def main():
                          then this parameter defines number of samples to take from it.")
     parser.add_argument("--min_occurences", type=int, help="Minimal occurences for word to be present in dictionary.", required=True)
     parser.add_argument("--max_occurences", default=1000, type=int, help="Maximal occurences for word to be present in dictionary.")
-
-    # parser.add_argument("output_filename", type=str, help="Output filename.")
-    # parser.add_argument("nr_of_shards", type=int, help="Number of files we want our dataset to be split on.")
-    # parser.add_argument("--permute", action="store_true", help="Deterministically permutes dataset.")
-    # parser.add_argument("--seed", type=int, default=42, help="Random seed")
     args = parser.parse_args()
 
     dataset = load_dataset(args.dataset_name)
@@ -28,21 +23,14 @@ def main():
 
     X_train = train_df["text"].values
     X_test = test_df["text"].values
-    # y_train = train_df["label"]
+    # Different column is "label" in imbdb dataset.
     if args.reduce_dataset_size:
         X_train = X_train[:args.dataset_size]
         X_test = X_test[:args.dataset_size]
     dictionary, counter = createDictionaryAndCounter(X_train, min_value=args.min_occurences, max_value=args.max_occurences)
     D = len(dictionary) # For min_value=5 number of keys is around 4000.
     print(f"Number of keys: {D}")
-    # 5 - good for CBOW.
     
-    # X_train = train_df["text"].values[:500] # For whole dataset (25k rows) and min_value of occurences 5 the dataset has size 28000, 
-    # # which is to big for CBOW without any optimizations. Here we take only 1000 rows and it reduced dictionary size to around 4000.
-    # y_train = train_df["label"].values[:500]
-    # X_test = test_df["text"].values[:500]
-    # y_test = test_df["label"].values[:500]
-
     if args.is_CBOW:
         cbow = NaiveCBOW(len(dictionary), args.d, dictionary, np.array([-4,-3,-2,-1,1,2,3,4]))
         cbow.train(X_train, X_test, 5, 50, 0.01,  computeUsingBatch=True)
@@ -57,9 +45,6 @@ def main():
             100,
             logdir=(args.logdir + "/skip_gram")
         )
-
-    # test_corpus = [textToWords(d, dictionary) for d in X_test]
-    # print(cbow.lossForCorpus(test_corpus, computeUsingBatch=True))
 
 if __name__ == "__main__":
     main()

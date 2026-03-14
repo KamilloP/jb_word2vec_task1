@@ -50,7 +50,8 @@ def textToWords(text, dictionary=None):
 
 def nearbyWords(words_sequence, neighbourhood_indices, i, D):
     """
-    Returns histogram of nearby words of word words_sequence[i], shape of result is (D,1). 
+    Returns histogram of nearby words of word words_sequence[i], shape of result is (D,1).
+    words_sequence is ndarray containing sequence of indices of the words from the text in the dictionary.
     Assumes that neighbourhood_indices is sorted ndarray.
     Assumes that each word is in dictionary.
     """
@@ -58,7 +59,6 @@ def nearbyWords(words_sequence, neighbourhood_indices, i, D):
     z = np.zeros((D,1), dtype=float)
     for idx in valid:
         z[words_sequence[i+idx]] += 1.
-    # TODO: maybe better implementation?
     return z
 
 def createCorpus(data, dictionary):
@@ -100,24 +100,15 @@ class NaiveCBOW():
     """
     This is naive implementation of Continuous bag-of-words (CBOW) as it uses whole histogram context vectors.
     More efficient implementation would use sth like hierarchical softmax. 
-    It is based on websites:
-    "https://en.wikipedia.org/wiki/Word2vec" and "https://arxiv.org/pdf/1411.2738".
-    Notation:
-    1) C - corpus of words (sequence of words),
-    2) V - set of words in the corpus C; dictionary,
-    3) D - cardinality of set V,
-    4) N - relative locations of nearby words, e.g. {-2,-1,1,2}; 0 does not belong to N; neighbourhood_indices,
-    5) d - dimension of hidden layer (latent space).
-    CBOW consists of small neural network consisting of 2 linear layers and softmax activation.
-    It produces distribution of probabilities over dictionary V, meaning words corresponding to
+    Forward produces probability using softmax, for good
     """
     def __init__(self, D, d, dictionary, neighbourhood_indices, seed=42):
         np.random.seed(seed)
         self.dictionary = dictionary
         self.V = np.random.randn(d,D) / np.sqrt(D)
         self.V_ = np.random.randn(D,d) / np.sqrt(d)
-        self.D = D
-        self.d = d
+        self.D = D # cardinality of set V.
+        self.d = d # dimension of hidden layer (latent space).
         self.neighobourhood_indices = neighbourhood_indices
 
     def forward(self, x):
@@ -141,7 +132,7 @@ class NaiveCBOW():
         # This could be optimized (same complexity, but smaller constant if we omit 0 in z), but on the other hand we cannot
         # do this easily with batch, and using np will probably result with smaller constant than this optimization. However
         # problem of huge memory overhead remains when we use this function.
-        logp = log_softmax(g, axis=-2) # Better for numerical stability than log(softmax(...))
+        logp = log_softmax(g, axis=-2) # Better for numerical stability than log(softmax(...)).
         return -logp[np.arange(x.shape[0]), w_i, 0].mean()
     
     def gradientLoss(self, x, w_i):
@@ -156,13 +147,9 @@ class NaiveCBOW():
         # Below we compute loss in batch of losses BL separately. We will add gradients later. 
         dBL_dg = softmax(g, axis=-2)
         dBL_dg[np.arange(B), w_i, 0] -= 1. # (B, D, 1)
-        # print("dBL_dg:", dBL_dg.shape)
         # dg_dV_{a,b} = [0, 0, ..., z_b, 0, 0, ..., 0], where z_b is in a-th entry, remember that b \in {0, ..., d-1}.
         dL_dV_ = np.mean(dBL_dg * z.transpose(0, 2, 1), axis=0)
-        # print("dL_dV_:", dL_dV_.shape)
-        # print("V_:", self.V_.shape)
-        dBL_dz = np.matmul(self.V_.T, dBL_dg)
-        # dBL_dz = dBL_dg @ self.V_ # Because dg_dz = self.V_. 
+        dBL_dz = np.matmul(self.V_.T, dBL_dg) # Because dg_dz = self.V_. 
         # We use chain rule. dBL_dz.shape == (B, d, 1). Analogically as in case of dL_dV_:
         dL_dV = np.mean(dBL_dz * x.transpose(0,2,1), axis=0)
         return dL_dV_, dL_dV
@@ -253,15 +240,17 @@ class NaiveCBOW():
 
 class SkipGram():
     """
-    https://en.wikipedia.org/wiki/Word2vec,
-    https://arxiv.org/pdf/1411.2738,
-    https://arxiv.org/pdf/1402.3722
+    Skip-gram with Negative Sampling. It uses mean over positive pairs in the batch.
+    For each pair we sample k negative samples. Window sets maximal context. Context is dynamic by default,
+    but can be set otherwise. We do not check if negative samples are truly negative, we just sample the 
+    context word according to unigram distribution raised to power 3/4. For this we use "count" argument -
+    number of word occurences in the dictionary.
     """
     def __init__(self, D, d, count, window=10, k=10, seed=42):
         np.random.seed(seed)
-        self.D = D        # number of words in the dictionary
-        self.d = d        # embedding dimension
-        self.k = k        # number of negative samples per positive pair
+        self.D = D # number of words in the dictionary
+        self.d = d # embedding dimension
+        self.k = k # number of negative samples per positive pair
         self.window = window
         # Note that in the definition of negative sampling in paper https://arxiv.org/pdf/1402.3722
         # they take unigram distribution and then raise it to 3/4, but this may not sum up to 1.
@@ -291,9 +280,6 @@ class SkipGram():
         return w,c
     
     def sample_negatives(self, nr_of_positive_samples):
-        """
-        Samples negative samples according to unigram distribution.
-        """
         c = np.random.choice(self.D, nr_of_positive_samples*self.k, p=self.unigram_prob)
         return c
     
@@ -307,8 +293,6 @@ class SkipGram():
         assert neg_samples.shape == (B, self.k)
         vw = self.V[:, w] # (d,B)
         v_c = self.V_[c] # (B,d)
-        # neg_samples = self.sample_negatives(B)
-        # neg_samples = neg_samples.reshape(B, self.k)
         v_n = self.V_[neg_samples] # (B,k,d)
         p = np.sum(v_c*vw.T, axis=1) # (B,)
         n = -np.sum(v_n * vw.T[:, None, :], axis=2) # (B,k)
