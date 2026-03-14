@@ -41,9 +41,8 @@ I will use the notation from [Wikipedia]:
 Intuitively we want to predict given word in sequence according to it's nearby words, 
 to be more precise we define neighbour words of word $w_i$ as $w_{i+j} \forall_{j \in N}$.
 Our objective is to maximize:
-$$
-\sum_{i \in |C|} \ln(P(w_i|w_{i+j} \forall_{j \in N}))
-$$
+
+$\sum_{i \in |C|} \ln(P(w_i|w_{i+j} \forall_{j \in N}))$
 
 We use linear-linear-softmax architecture. Our input is $x \in R^{D \times 1}$, which encodes histogram
 of words in neighbourhood of given word. We have 2 learnable linear projection matrices:
@@ -51,11 +50,11 @@ $V \in R^{d \times D}$ and $V' \in R^{D \times d}$. Output probabilities are
 $\text{softmax}(V'Vx) \in [0,1]^{D \times 1}.$
 
 Our objective is equivalent to minimizing
-$$
-L = -\sum_{i \in |C|} \ln(P(w_i|w_{i+j} \forall_{j \in N})) = 
+
+$L = -\sum_{i \in |C|} \ln(P(w_i|w_{i+j} \forall_{j \in N})) = 
 -\sum_{i \in |C|} \ln( \frac{e^{v'_{w_i} (V z_i)}}{\sum_{w' \in V} e^{v'_{w'} (V z_i)}}) = 
--\sum_{i \in |C|} \ln( \frac{e^{v'_{w_i} (\sum_{j \in N} v_{i+j})}}{\sum_{w' \in V} e^{v'_{w'} (\sum_{j \in N} v_{i+j})}}),
-$$
+-\sum_{i \in |C|} \ln( \frac{e^{v'_{w_i} (\sum_{j \in N} v_{i+j})}}{\sum_{w' \in V} e^{v'_{w'} (\sum_{j \in N} v_{i+j})}}),$
+
 where $z_i \in R^{D \times 1}$ is histogram of nearby words of word $w_i$. This is the same as cross entropy loss defined in [Wikipedia]. However in reality I have used mean over words in the corpus.
 
 Note that this implementation is inefficient, as dictionary can be huge. Better implementation could use
@@ -65,15 +64,15 @@ Note that if $N$ (indices set of relative locations of nearby words) is small, a
 $D$ is huge, then majority of entries in input (histogram of words in the neighbourhood) are zeros.
 Naive computation has complexity of O(Dd) time. Note that forward pass could omit some computation 
 and just set output of the first layer as
-$$
-y = Vx = \sum_{j \in N} v_{w_{i+j}}.
-$$
+
+$y = Vx = \sum_{j \in N} v_{w_{i+j}}.$
+
 This costs $O(|N| D)$.
 
 However as probably each vector $v_{i+j}$ will not have a lot of zeros, then computing output of second layer
-$$
-u = V'y
-$$
+
+$u = V'y$
+
 will require $O(Dd)$.
 After that softmax has complexity $O(D)$. As we can see overall complexity of forward pass is $O(Dd)$, where second linear layer
 enforces such high cost. We can omit optimization described earlier regarding first linear projection, as it only reduces constant, but not complexity.
@@ -82,16 +81,15 @@ enforces such high cost. We can omit optimization described earlier regarding fi
 Architecture is the same as in case of CBOW.
 
 Let's denote pair of word and one word from it's context as (w,c), then
-$$
-P(v_c'|v_w) = \text{sigmoid}(v_c \cdot v_w')
-$$
+
+$P(v_c'|v_w) = \text{sigmoid}(v_c \cdot v_w')$
+
 Let's denote $\text{sigmoid} = \sigma$. 
 
 We use Negative Sampling (otherwise model could learn trivial representations). Let's denote set of positive pairs as $D$
 and set of negative pairs as $D'$. Then our loss is
-$$
-L = - \sum_{(w,c) \in D}\ln(\sigma(v_c' \cdot v_w)) - \sum_{(w,n) \in D'} \ln(\sigma(v_n' \cdot v_w))
-$$
+
+$L = - \sum_{(w,c) \in D}\ln(\sigma(v_c' \cdot v_w)) - \sum_{(w,n) \in D'} \ln(\sigma(v_n' \cdot v_w))$
 
 Actually for each positive pair $(w,c)$ we sample k negative pairs $(w,c_1), ..., (w,c_k)$. We actually do not check if they are wrong, we just sample them from unigram distribution raise to power 3/4  (see [word2vec Explained: Deriving Mikolov et al.’s Negative-Sampling Word-Embedding Method]). In reality for each pair we compute loss and compute mean over number of positive pairs in the batch.
 
