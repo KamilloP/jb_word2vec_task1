@@ -50,15 +50,14 @@ def textToWords(text, dictionary=None):
 
 def nearbyWords(words_sequence, neighbourhood_indices, i, D):
     """
-    Returns histogram of nearby words of word words_sequence[i], shape of result is (D,1).
+    Returns a histogram of context words around words_sequence[i], shape of result is (D,1).
     words_sequence is ndarray containing sequence of indices of the words from the text in the dictionary.
     Assumes that neighbourhood_indices is sorted ndarray.
-    Assumes that each word is in dictionary.
+    Assumes that each word index belongs to the dictionary.
     """
-    valid = neighbourhood_indices[(neighbourhood_indices + i >= 0) & (neighbourhood_indices + i < len(words_sequence))] # TODO: test it
+    valid = neighbourhood_indices[(neighbourhood_indices + i >= 0) & (neighbourhood_indices + i < len(words_sequence))]
     z = np.zeros((D,1), dtype=float)
-    for idx in valid:
-        z[words_sequence[i+idx]] += 1.
+    np.add.at(z[:,0], words_sequence[i+valid], 1) # add.at is important as repetitions may appear. 
     return z
 
 def createCorpus(data, dictionary):
@@ -74,9 +73,9 @@ def createCorpus(data, dictionary):
 def createDictionaryAndCounter(data, min_value=1., max_value=np.inf):
     """
     This method creates dictionary based on words in data.
-    It inserts words to dictionary only if number of occurences in data is not
-    too big or too small. On default it assumes that every positive number of occurences is sufficient.
-    The reason for minimal and maximal threshold of occurences is that we want dictionary to not
+    It inserts words to dictionary only if number of word occurrences in data is not
+    too big or too small. On default it assumes that every positive number of occurrences is sufficient.
+    The reason for minimal and maximal threshold of occurrences is that we want dictionary to not
     be too large while too frequent words do not bring a lot of information. 
     """
     c = Counter()
@@ -99,7 +98,7 @@ def createDictionaryAndCounter(data, min_value=1., max_value=np.inf):
 class NaiveCBOW():
     """
     This is naive implementation of Continuous bag-of-words (CBOW) as it uses whole histogram context vectors.
-    More efficient implementation would use sth like hierarchical softmax. 
+    More efficient implementation would use something like hierarchical softmax. 
     Forward produces probability using softmax, for good
     """
     def __init__(self, D, d, dictionary, neighbourhood_indices, seed=42):
@@ -109,7 +108,7 @@ class NaiveCBOW():
         self.V_ = np.random.randn(D,d) / np.sqrt(d)
         self.D = D # cardinality of set V.
         self.d = d # dimension of hidden layer (latent space).
-        self.neighobourhood_indices = neighbourhood_indices
+        self.neighbourhood_indices = neighbourhood_indices
 
     def forward(self, x):
         """
@@ -156,7 +155,7 @@ class NaiveCBOW():
     
     def __schemeForCorpus(self, goal_func, init_func, add_func, mul_func, corpus, computeUsingBatch=True):
         """
-        Auxilliary private function for mean goal functions like loss or gradient.
+        Auxiliary function for computing mean objective functions (e.g. loss or gradients) over a corpus.
         Arguments:
         -- corpus - list of lists, corpus[i][j] contains j-th word in i-th text. Assumes that each word is in dictionary.
         """
@@ -169,17 +168,15 @@ class NaiveCBOW():
             if computeUsingBatch:
                 z = np.zeros((len(list_), self.D, 1)) # Can be huge
                 for i in range(len(list_)):
-                    z[i] = nearbyWords(list_, self.neighobourhood_indices, i, self.D)
+                    z[i] = nearbyWords(list_, self.neighbourhood_indices, i, self.D)
                 temp_target = goal_func(z, np.arange(len(list_)))
                 temp_target = mul_func(temp_target, len(list_))
-                # temp_target = add_func(temp_target, val) # target += val
             else:
                 # Compute 1 by 1
                 for i in range(len(list_)):
-                    z = nearbyWords(list_, self.neighobourhood_indices, i, self.D)
+                    z = nearbyWords(list_, self.neighbourhood_indices, i, self.D)
                     val = goal_func(np.expand_dims(z, axis=0), np.arange(1))
                     temp_target = add_func(temp_target, val)
-                # temp_target = mul_func(temp_target, 1./len(list_))
             target = add_func(target, temp_target)
         target = mul_func(target, 1./nr_of_samples)
         return target
@@ -244,7 +241,7 @@ class SkipGram():
     For each pair we sample k negative samples. Window sets maximal context. Context is dynamic by default,
     but can be set otherwise. We do not check if negative samples are truly negative, we just sample the 
     context word according to unigram distribution raised to power 3/4. For this we use "count" argument -
-    number of word occurences in the dictionary.
+    number of word occurrences in the dictionary.
     """
     def __init__(self, D, d, count, window=10, k=10, seed=42):
         np.random.seed(seed)
@@ -255,6 +252,7 @@ class SkipGram():
         # Note that in the definition of negative sampling in paper https://arxiv.org/pdf/1402.3722
         # they take unigram distribution and then raise it to 3/4, but this may not sum up to 1.
         # So we divide it here by sum to make proper distribution.
+        count = count**(3/4)
         self.unigram_prob = count / count.sum()
         self.unigram_prob /= self.unigram_prob.sum()
 
@@ -334,11 +332,14 @@ class SkipGram():
         dV_c = (grad_pos * vw.T) / B # (B,d)
         dV_n = (grad_neg * vw.T[:,None,:]) / B # (B,k,d)
 
-        self.V[:,w] -= lr*dVw
-        self.V_[c,:] -= lr*dV_c
-        # self.V_[neg_samples.reshape(-1)] -= lr * dV_n.reshape(-1,self.d) # This may be a problem if we have collision of words,
-        # as it overwrites, not adds. So:
+        # self.V[:,w] -= lr*dVw
+        np.add.at(self.V, (slice(None), w), -lr * dVw)
+        # self.V_[c,:] -= lr*dV_c
+        np.add.at(self.V_, c, -lr * dV_c)
+        # self.V_[neg_samples.reshape(-1)] -= lr * dV_n.reshape(-1,self.d) 
         np.add.at(self.V_, neg_samples.reshape(-1), -lr * dV_n.reshape(-1,self.d))
+        # Repetition of words could be a problem in case of simple A += B usage, as it overwrites, not adds.
+        # To prevent it I have used np.add.at(...).
 
         return loss, dVw, dV_c, dV_n, neg_samples
     
